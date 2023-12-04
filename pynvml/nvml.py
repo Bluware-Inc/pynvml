@@ -1776,25 +1776,60 @@ def _LoadNvmlLibrary():
     '''
     global nvmlLib
 
-    if (nvmlLib == None):
+    if nvml_lib == None:
         # lock to ensure only one caller loads the library
         libLoadLock.acquire()
 
         try:
             # ensure the library still isn't loaded
-            if (nvmlLib == None):
+            if nvml_lib == None:
                 try:
-                    if (sys.platform[:3] == "win"):
+                    if sys.platform[:3] == "win":
                         # cdecl calling convention
-                        try:
-                            # Check for nvml.dll in System32 first for DCH drivers
-                            nvmlLib = CDLL(os.path.join(os.getenv("WINDIR", "C:/Windows"), "System32/nvml.dll"))
-                        except OSError as ose:
-                            # If nvml.dll is not found in System32, it should be in ProgramFiles
-                            # load nvml.dll from %ProgramFiles%/NVIDIA Corporation/NVSMI/nvml.dll
-                            nvmlLib = CDLL(os.path.join(os.getenv("ProgramFiles", "C:/Program Files"), "NVIDIA Corporation/NVSMI/nvml.dll"))
+                        # load nvml.dll from %ProgramFiles%/NVIDIA Corporation/NVSMI/nvml.dll
+                        # nvml_lib = CDLL(os.path.join(os.getenv("ProgramFiles", "C:/Program Files"), "NVIDIA Corporation/NVSMI/nvml.dll"))
+                        #
+                        # monkey patch on pynvml for loading "nvml.dll"
+                        #
+                        nvml_lib_pathes = [
+                            os.getenv("NVML_DLL_PATH", ""),
+                            "C:/Windows/System32/nvml.dll",
+                            os.path.join(
+                                os.getenv("ProgramFiles", "C:/Program Files"),
+                                "NVIDIA Corporation/NVSMI/nvml.dll",
+                            ),
+                        ]
+                        for path in nvml_lib_pathes:
+                            if os.path.isfile(path):
+                                nvml_lib = CDLL(path)
+                                break
+                        if not nvml_lib:
+                            nvidia_driver_dir = os.path.join(
+                                os.getenv("ProgramFiles", "C:/Program Files"),
+                                "NVIDIA Corporation/Installer2",
+                            )
+                            if os.path.isdir(nvidia_driver_dir):
+                                for filename in os.listdir(nvidia_driver_dir):
+                                    if filename.startswith("Display.Driver"):
+                                        nvmldll = os.path.join(
+                                            nvidia_driver_dir, f"{filename}/nvml.dll"
+                                        )
+                                        # checking if it is a file
+                                        if os.path.isfile(nvmldll):
+                                            nvml_lib = CDLL(nvmldll)
+                                            break
                     else:
                         # assume linux
+                        #
+                        # monkey patch on pynvml for loading "nvml.dll"
+                        #
+                        os.environ["LD_LIBRARY_PATH"] = ":".join(
+                            (
+                                os.getenv("LD_LIBRARY_PATH", ""),
+                                "/usr/lib64",
+                                "/usr/lib",
+                            )
+                        )
                         nvmlLib = CDLL("libnvidia-ml.so.1")
                 except OSError as ose:
                     _nvmlCheckReturn(NVML_ERROR_LIBRARY_NOT_FOUND)
