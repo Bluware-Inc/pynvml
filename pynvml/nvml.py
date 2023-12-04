@@ -1784,6 +1784,7 @@ def _LoadNvmlLibrary():
             # ensure the library still isn't loaded
             if nvml_lib == None:
                 try:
+                    nvml_lib_path = os.getenv("NVML_LIB_PATH", "")
                     if sys.platform[:3] == "win":
                         # cdecl calling convention
                         # load nvml.dll from %ProgramFiles%/NVIDIA Corporation/NVSMI/nvml.dll
@@ -1791,8 +1792,10 @@ def _LoadNvmlLibrary():
                         #
                         # monkey patch on pynvml for loading "nvml.dll"
                         #
+                        if nvml_lib_path:
+                            nvml_lib_path = os.path.join(nvml_lib_path, "nvml.dll")
                         nvml_lib_pathes = [
-                            os.getenv("NVML_DLL_PATH", ""),
+                            nvml_lib_path,
                             "C:/Windows/System32/nvml.dll",
                             os.path.join(
                                 os.getenv("ProgramFiles", "C:/Program Files"),
@@ -1823,13 +1826,15 @@ def _LoadNvmlLibrary():
                         #
                         # monkey patch on pynvml for loading "nvml.dll"
                         #
-                        os.environ["LD_LIBRARY_PATH"] = ":".join(
-                            (
-                                os.getenv("LD_LIBRARY_PATH", ""),
-                                "/usr/lib64",
-                                "/usr/lib",
+                        ld_lib_path_str = os.getenv("LD_LIBRARY_PATH", "")
+                        ld_lib_path = [ld_lib_path_str] if ld_lib_path_str else []
+                        if nvml_lib_path:
+                            ld_lib_path.extend(
+                                [nvml_lib_path, "/usr/lib64", "/usr/lib"]
+                                if nvml_lib_path
+                                else ["/usr/lib64", "/usr/lib"]
                             )
-                        )
+                        os.environ["LD_LIBRARY_PATH"] = ":".join(ld_lib_path)
                         nvmlLib = CDLL("libnvidia-ml.so.1")
                 except OSError as ose:
                     _nvmlCheckReturn(NVML_ERROR_LIBRARY_NOT_FOUND)
